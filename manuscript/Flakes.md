@@ -2,6 +2,8 @@
 
 This book has leaned pretty heavily on the Nix command line's support for "flakes", but I've glossed over the details of how flakes work despite how much we've already been using them.  In this chapter I'll give a more patient breakdown of how flakes work and why we use them.
 
+Most of what this chapter will cover is information that you can already find from other resources, like the [NixOS Wiki page on Flakes](https://nixos.wiki/wiki/Flakes#Flake_schema) or by running `nix help flake`.  However, I'll still try to explain flakes in my own words and also include my own commentary on "dos" and "don'ts" of using flakes.
+
 ## Motivation
 
 You can think of flakes as the package manager for Nix.  In other words, if we use Nix to build and distribute packages written in other programming languages (e.g.  Go, Haskell, Python), then flakes are how we "build" and distribute Nix packages.
@@ -227,6 +229,23 @@ global flake:nixpkgs github:NixOS/nixpkgs/nixpkgs-unstable
 
 … which would have produced the same result: both flake references will attempt to fetch the `nixpkgs-unstable` branch of the `nixpkgs` repository to resolve the `nixpkgs` flake input.
 
+{blurb, class:information}
+Throughout the rest of this chapter (and book) I'm going to try to make flake references as pure as possible, meaning:
+
+- no indirect flake references
+
+  In other words, instead of `nixpkgs` I'll use `github:NixOS/nixpkgs/23.05`.
+
+
+- all GitHub flake references will include a tag
+
+  In other words, I won't use a flake reference like `github:NixOS/nixpkgs`.
+
+Neither of these precautions are strictly necessary when using flakes because flakes lock their dependencies using a `flake.lock` file which you can (and should) store in version control.  However, the inline flake examples in this book can't reasonably include the `flake.lock` file, so the above precautions ensure that the inline examples are more reproducible.
+
+Also, it's a good idea to take these precautions anyway even if you can include the `flake.lock` file alongside your `flake.nix` file.  The more reproducible your flake references, the better you document how to regenerate or update your lock file.
+{/blurb}
+
 Suppose we wanted to use our own local `git` checkout of `nixpkgs` instead of a remote `nixpkgs` branch: we'd have to change the `nixpkgs` input to our flake to reference the path to our local repository (since paths are valid flake references), like this:
 
 ```nix
@@ -382,24 +401,37 @@ This `legacyPackages.x86_64-linux.hello` attribute path is the same attribute pa
 }
 ```
 
-#### TODO
+There's actually one more thing you can do with a flake, which is to access the original path to the flake.  Flakes have an `outPath` attribute
+
 
 ### Platforms
 
-This first example highlights one important aspect of flakes: selecting the appropriate system for building our code.  Normally we don't explicitly write out the system when authoring a flake and we instead typically use the `flake-utils` package to manage the system for us, like this:
+All of the above examples hard-coded a single system (`x86_64-linux`), but usually you want to support building a package for multiple systems.  People typically use the `flake-utils` flake for this purpose, which you can use like this;
 
 ```nix
-{ outputs = { flake-utils, nixpkgs, ... }:
+{ inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/23.05";
+
+    flake-utils.url = "github:numtide/flake-utils/v1.0.0";
+  };
+
+  outputs = { flake-utils, nixpkgs, ... }:
     flake-utils.lib.eachDefaultSystem (system: {
       packages.default = nixpkgs.legacyPackages."${system}".hello;
     });
 }
 ```
 
-… and that essentially is the same thing as if we had written:
+… and that is essentially the same thing as if we had written:
 
 ```nix
-{ outputs = { nixpkgs, ... }: {
+{ inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/23.05";
+
+    flake-utils.url = "github:numtide/flake-utils/v1.0.0";
+  };
+
+  outputs = { nixpkgs, ... }: {
     packages.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.hello;
     packages.aarch64-linux.default = nixpkgs.legacyPackages.aarch64-linux.hello;
     packages.x86_64-darwin.default = nixpkgs.legacyPackages.x86_64-darwin.hello;
@@ -407,22 +439,5 @@ This first example highlights one important aspect of flakes: selecting the appr
   };
 }
 ```
-
-However, it might not be clear why we need to write (or generate) code that specifies the system twice.  In other words: why do we specify the system on both the left-hand and right-hand side of the equals sign?
-
-The system on the left-hand side of the equals sign is used by the command-line interface to select which output attribute of our flake to build.  By default, if we don't specify
-
-```nix
-{ outputs = { nixpkgs, ... }: {
-    packages.x86_64-linux.default = nixpkgs.legacyPackages.x86_64-linux.hello;
-  };
-}
-```
-
-The above flake creates a `hello` package
-
-## Anatomy of a flake
-
-Most of what this section will cover is information that you can already find from other resources, like the [NixOS Wiki page on Flakes](https://nixos.wiki/wiki/Flakes#Flake_schema) or by running `nix help flake`.  However, I'll still try to explain flakes in my own words and also include my own commentary on "dos" and "don'ts" of using flakes.
 
 [^1]: We'll cover the difference between `apps` and `packages` later in this chapter.
